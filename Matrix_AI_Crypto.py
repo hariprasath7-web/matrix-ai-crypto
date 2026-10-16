@@ -61,19 +61,37 @@ K_INV = [[15, 17], [20, 9]]
 def clean_text(value: str) -> str:
     return "".join(ch for ch in value.upper() if ch in ALPHABET)
 
+def _put_letters_back(template: str, letters: str) -> str:
+    """Replace A-Z slots with transformed letters, keeping spaces/punctuation."""
+    letter_iter = iter(letters)
+    formatted = []
+    for char in template:
+        if char.upper() in ALPHABET:
+            formatted.append(next(letter_iter, ""))
+        else:
+            formatted.append(char)
+    # The extra letter, if any, is the padding character appended during encryption.
+    formatted.extend(letter_iter)
+    return "".join(formatted)
+
 def encrypt_message(message: str):
     text = clean_text(message)
     if not text:
         raise ValueError("Enter a message containing letters A–Z.")
+
     padded = len(text) % 2 == 1
     if padded:
         text += "X"
+
     out = []
     for i in range(0, len(text), 2):
         a, b = ALPHABET.index(text[i]), ALPHABET.index(text[i + 1])
         out.append(ALPHABET[(K[0][0]*a + K[0][1]*b) % 26])
         out.append(ALPHABET[(K[1][0]*a + K[1][1]*b) % 26])
-    return "".join(out), padded, clean_text(message)
+
+    # Keep spaces and punctuation in their original positions for display.
+    formatted_cipher = _put_letters_back(message, "".join(out))
+    return formatted_cipher, padded, clean_text(message)
 
 def decrypt_message(ciphertext: str, remove_padding=False):
     text = clean_text(ciphertext)
@@ -81,15 +99,22 @@ def decrypt_message(ciphertext: str, remove_padding=False):
         raise ValueError("Enter ciphertext containing letters A–Z.")
     if len(text) % 2:
         raise ValueError("Ciphertext must contain an even number of letters.")
+
     out = []
     for i in range(0, len(text), 2):
-        a, b = ALPHABET.index(text[i]), ALPHABET.index(text[i+1])
+        a, b = ALPHABET.index(text[i]), ALPHABET.index(text[i + 1])
         out.append(ALPHABET[(K_INV[0][0]*a + K_INV[0][1]*b) % 26])
         out.append(ALPHABET[(K_INV[1][0]*a + K_INV[1][1]*b) % 26])
     result = "".join(out)
-    if remove_padding and result.endswith("X"):
+
+    # Encryption appends its padding letter at the very end of the formatted text.
+    # Remove that slot too, so spaces and punctuation remain correctly positioned.
+    template = ciphertext
+    if remove_padding and result.endswith("X") and template and template[-1].upper() in ALPHABET:
         result = result[:-1]
-    return result
+        template = template[:-1]
+
+    return _put_letters_back(template, result)
 
 if "history" not in st.session_state:
     st.session_state.history = []
@@ -221,7 +246,7 @@ elif page == "Decrypt Message":
             st.session_state.history.append({"operation":"Decrypt", "input":clean_text(ciphertext), "output":plain, "alert":False})
         except ValueError as e:
             st.error(str(e))
-    st.caption("Spaces and punctuation are removed during normalization. Decryption cannot always determine whether a final X was original or padding.")
+    st.caption("Spaces and punctuation are preserved in the displayed message. If encryption added an X for padding, select the checkbox above to remove it. A real final X can be ambiguous in this educational cipher.")
 
 elif page == "Security Center":
     st.markdown("### 🛡️ Security center")
